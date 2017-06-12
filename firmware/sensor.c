@@ -38,8 +38,9 @@ static uint8_t uart_end = 0;
 #define UART_BAUD		(1220ULL)
 #define UART_BIT_TIME		((F_CPU / 1ULL) / (UART_BAUD))
 #define PIN_UART		PB0
-#define UART_LOGIC_HIGH()	PORTB |= (1 << PIN_UART)
-#define UART_LOGIC_LOW()	PORTB &= ~(1 << PIN_UART)
+#define UART_LOGIC_HIGH()	PORTB &= ~(1 << PIN_UART)
+#define UART_LOGIC_LOW()	PORTB |= (1 << PIN_UART)
+
 
 static void init_hardware(void)
 {
