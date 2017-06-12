@@ -29,15 +29,17 @@ enum {
 	UART_TX_TAIL4		= 17,
 } uart_tx_state = UART_TX_IDLE;
 static uint8_t uart_end = 0;
-#define UART_IS_EMPTY()	(uart_current == uart_end)
-#define UART_IS_FULL()	(((uart_current + 1) % UART_BUF_SIZE) == uart_end)
+#define UART_IS_EMPTY()		(uart_current == uart_end)
+#define UART_IS_FULL()		(((uart_current + 1) % UART_BUF_SIZE) == uart_end)
 /* XXX NB the baud-rate may require slight tuning
  * due to internal oscillator precision.
  * start with 1200 when re-tuning for new hardware.
  * */
-#define UART_BAUD	(1220ULL)
-#define UART_BIT_TIME	((F_CPU / 1ULL) / (UART_BAUD))
-#define PIN_UART	PB0
+#define UART_BAUD		(1220ULL)
+#define UART_BIT_TIME		((F_CPU / 1ULL) / (UART_BAUD))
+#define PIN_UART		PB0
+#define UART_LOGIC_HIGH()	PORTB |= (1 << PIN_UART)
+#define UART_LOGIC_LOW()	PORTB &= ~(1 << PIN_UART)
 
 static void init_hardware(void)
 {
@@ -112,7 +114,7 @@ ISR(TIM0_COMPA_vect)
 		++uart_tx_state;
 		switch(uart_tx_state) {
 			case UART_TX_START_BIT:
-				PORTB &= ~(1 << PIN_UART);
+				UART_LOGIC_LOW();
 				break;
 			case UART_TX_PARITY:
 				{
@@ -120,13 +122,13 @@ ISR(TIM0_COMPA_vect)
 					val ^= val >> 2;
 					val ^= val >> 1;
 					if(val & 1)
-						PORTB |= (1 << PIN_UART);
+						UART_LOGIC_HIGH();
 					else
-						PORTB &= ~(1 << PIN_UART);
+						UART_LOGIC_LOW();
 				}
 				break;
 			case UART_TX_STOP1:
-				PORTB |= (1 << PIN_UART);
+				UART_LOGIC_HIGH();
 				break;
 			case UART_TX_TAIL1:
 				/* fall through */
@@ -143,9 +145,9 @@ ISR(TIM0_COMPA_vect)
 				/* transmit current bit */
 				val >>= (uart_tx_state - UART_TX_BIT0);
 				if(val & 1)
-					PORTB |= (1 << PIN_UART);
+					UART_LOGIC_HIGH();
 				else
-					PORTB &= ~(1 << PIN_UART);
+					UART_LOGIC_LOW();
 				break;
 		}
 	}
