@@ -6,35 +6,36 @@
 
 #define PIN_UART_TX		PB0
 
-static void init_hardware(void)
-{
-	// enable UART output pin
-	DDRB = (1 << PIN_UART_TX);
-
-	// set sleep-mode to idle so TIMER0 can still wake us up
-	SMCR = 0;
-
-	sei();
-}
-
 #define UART_LOGIC_HIGH()	PORTB &= ~(1 << PIN_UART_TX)
 #define UART_LOGIC_LOW()	PORTB |= (1 << PIN_UART_TX)
 #define UART_BAUD		(1220ULL)
 #define UART_BIT_TIME		((F_CPU / 1ULL) / (UART_BAUD))
 
+static void start_timer0(void)
+{
+	TCCR0A = 0;
+	TCCR0C = 0;
+	TCNT0 = 0;
+	// enable OCR0A interrupt
+	TIMSK0 = (1 << OCIE0A);
+
+	// set mode to Clear timer on compare (OCR0A)
+	// set prescaler flags
+	TCCR0B = (1 << WGM02) | 0b001;
+}
+
+static inline void stop_timer0(void)
+{
+	TCCR0B = 0;
+}
+
 static void uart_tx(char c)
 {
 	char tmp;
 
-	// start transmitter timer0 (OCR0A)
+	// enable timer for specified baudrate
 	OCR0A = UART_BIT_TIME;
-	TCCR0A = 0;
-	TCCR0C = 0;
-	TCNT0 = 0;
-	TIMSK0 = (1 << OCIE0A);// enable OCR0A interrupt
-	TCCR0B = (1 << WGM02) | 0b001;
-			// Clear timer on compare (OCR0A),
-			// TimerCLK is IoCLK
+	start_timer0();
 
 	// start bit
 	UART_LOGIC_LOW();
@@ -65,13 +66,33 @@ static void uart_tx(char c)
 		UART_LOGIC_HIGH();
 	}
 
-	// disable transmitter timer0
-	TCCR0B = 0;
+	stop_timer0();
 }
+
+#define PIN_I2C_SCL		PB1
+#define PIN_I2C_SDA		PB2
+
+#define I2C_BAUD		(10000ULL)
+#define I2C_BIT_TIME		((F_CPU / 1ULL) / (I2C_BAUD))
+
+/*
+static uint8_t i2c_XXXXXX(uint8_t address)
+{
+	// enable timer for i2c timings
+	OCR0A = I2C_BIT_TIME;
+	start_timer0();
+}
+*/
 
 int main(void)
 {
-	init_hardware();
+	// enable UART output pin
+	DDRB = (1 << PIN_UART_TX) | (1 << PIN_I2C_SCL) | (1 << PIN_I2C_SDA);
+
+	// set sleep-mode to idle so TIMER0 can still wake us up
+	SMCR = 0;
+
+	sei();
 
 	char i = '0';
 
