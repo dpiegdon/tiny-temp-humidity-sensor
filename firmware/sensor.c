@@ -66,7 +66,7 @@ static void init_hardware(void)
 static void uart_tx(char c)
 {
 	while(UART_IS_FULL())
-		sleep_mode(); // block untile space in ringbuffer
+		sleep_mode(); // block until space in ringbuffer
 
 	uart_buffer[uart_end] = c;
 	uart_end = (uart_end + 1) % UART_BUF_SIZE;
@@ -108,10 +108,7 @@ int main(void)
 ISR(TIM0_COMPA_vect)
 {
 	register uint8_t val = uart_buffer[uart_current];
-	if(UART_IS_EMPTY()) {
-		TCCR0B = 0; // disable transmitter timer0
-		uart_tx_state = UART_TX_IDLE;
-	} else {
+	if(!UART_IS_EMPTY()) {
 		++uart_tx_state;
 		switch(uart_tx_state) {
 			case UART_TX_START_BIT:
@@ -151,6 +148,9 @@ ISR(TIM0_COMPA_vect)
 					UART_LOGIC_LOW();
 				break;
 		}
+	} else {
+		TCCR0B = 0; // disable transmitter timer0
+		uart_tx_state = UART_TX_IDLE;
 	}
 }
 
