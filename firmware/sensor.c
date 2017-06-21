@@ -32,8 +32,12 @@ ISR(TIM0_COMPA_vect)
 
 #define PIN_UART_TX		PB0
 
-#define UART_LOGIC_HIGH()	PORTB &= ~(1 << PIN_UART_TX)
-#define UART_LOGIC_LOW()	PORTB |= (1 << PIN_UART_TX)
+// normal UART
+#define UART_LOGIC_HIGH()	PORTB |= (1 << PIN_UART_TX)
+#define UART_LOGIC_LOW()	PORTB &= ~(1 << PIN_UART_TX)
+// inverted UART (for RF transmission)
+//#define UART_LOGIC_HIGH()	PORTB &= ~(1 << PIN_UART_TX)
+//#define UART_LOGIC_LOW()	PORTB |= (1 << PIN_UART_TX)
 
 #define UART_BAUD		(1220ULL)
 #define UART_BIT_TIME		((F_CPU / 1ULL) / (UART_BAUD))
@@ -142,7 +146,7 @@ static void i2c_write_byte(uint8_t byte)
 	i2c_clk_wait_high_low();
 }
 
-static uint8_t i2c_read_byte(void)
+static uint8_t i2c_read_byte(uint8_t send_ack)
 {
 	uint8_t ret = 0;
 	for(uint8_t tmp = 0x80; tmp != 0; tmp >>= 1) {
@@ -153,7 +157,9 @@ static uint8_t i2c_read_byte(void)
 			ret |= 1;
 	}
 	sleep_mode();
-	I2C_SDA_LOW_W();
+
+	if(send_ack) // send acknowledge bit
+		I2C_SDA_LOW_W();
 	i2c_clk_wait_high_low();
 	I2C_SDA_HIGH_R();
 	return ret;
@@ -178,6 +184,56 @@ static void i2c_stop(void)
 	stop_timer0();
 }
 
+#define ADT_ADDRESS 0b1001000
+
+void adt7410_set_extended_precision(void)
+{
+	// select config register
+	i2c_start();
+	i2c_write_byte((ADT_ADDRESS << 1) | 0);
+	if(i2c_sda_last_bit)
+		goto end;
+	i2c_write_byte(0x03);
+	if(i2c_sda_last_bit)
+		goto end;
+
+	// set 16bit precision flag
+	i2c_write_byte(0x80);
+end:
+	i2c_stop();
+}
+
+uint16_t adt7410_get_temp(void)
+{
+	uint16_t ret = 0;
+
+	// select register 0x00
+	i2c_start();
+	i2c_write_byte((ADT_ADDRESS << 1) | 0);
+	if(i2c_sda_last_bit)
+		goto end;
+	i2c_write_byte(0x00);
+	if(i2c_sda_last_bit)
+		goto end;
+	i2c_stop();
+
+	// read it
+	i2c_start();
+	i2c_write_byte((ADT_ADDRESS << 1) | 1);
+	if(i2c_sda_last_bit)
+		goto end;
+	ret = i2c_read_byte(1) << 8;
+
+	// read the one after it as well
+	ret |= i2c_read_byte(0);
+
+	// last transfer was successful, even though ACK bit was not low
+	i2c_sda_last_bit = 0;
+end:
+	i2c_stop();
+	return ret;
+}
+
 char hexdigit(uint8_t lower_nibble)
 {
 	if(lower_nibble <= 9)
@@ -189,8 +245,7 @@ char hexdigit(uint8_t lower_nibble)
 
 int main(void)
 {
-	char temp=0;
-	char v;
+	uint16_t temp;
 
 	// setup UART and I2C pins
 	DDRB = (1 << PIN_UART_TX);
@@ -202,25 +257,23 @@ int main(void)
 
 	uart_tx('P');
 
+	adt7410_set_extended_precision();
+
 	while(1) {
-		// sample value
-		i2c_start();
-		i2c_write_byte(0x55);
-		if(!i2c_sda_last_bit)
-			temp = i2c_read_byte();
-		i2c_stop();
+		temp = adt7410_get_temp();
 
 		// send out value via uart (or error message)
 		if(!i2c_sda_last_bit) {
 			uart_tx('T');
-			v = hexdigit(temp >> 4);
-			uart_tx(v);
-			v = hexdigit(temp & 0x0f);
-			uart_tx(v);
+			uart_tx(hexdigit((temp >> 12) & 0xf));
+			uart_tx(hexdigit((temp >>  8) & 0xf));
+			uart_tx(hexdigit((temp >>  4) & 0xf));
+			uart_tx(hexdigit((temp >>  0) & 0xf));
 		} else {
 			uart_tx('N');
 		}
 		uart_tx('\n');
+		uart_tx('\r');
 	}
 }
 
