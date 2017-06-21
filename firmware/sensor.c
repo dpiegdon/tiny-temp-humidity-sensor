@@ -39,6 +39,8 @@ ISR(TIM0_COMPA_vect)
 //#define UART_LOGIC_HIGH()	PORTB &= ~(1 << PIN_UART_TX)
 //#define UART_LOGIC_LOW()	PORTB |= (1 << PIN_UART_TX)
 
+// 1200 Baud UART, with clock skew calibration.
+// actually, up to 19200 Baud work (via 19520ULL)
 #define UART_BAUD		(1220ULL)
 #define UART_BIT_TIME		((F_CPU / 1ULL) / (UART_BAUD))
 
@@ -92,7 +94,7 @@ static void uart_tx(char c)
 #define I2C_SDA_HIGH_R()	(DDRB &= ~(1 << PIN_I2C_SDA))
 #define I2C_SDA_IS_HIGH()	(PINB & (1 << PIN_I2C_SDA))
 
-#define I2C_BAUD		(2000ULL)
+#define I2C_BAUD		(20000ULL)
 #define I2C_BIT_TIME		((F_CPU / 4ULL) / (I2C_BAUD))
 
 // requirement: SCL and SDA are high.
@@ -251,13 +253,19 @@ int main(void)
 	DDRB = (1 << PIN_UART_TX);
 	PUEB = (1 << PIN_I2C_SCL) | (1 << PIN_I2C_SDA);
 
+	// set system clock to 8MHz by disabling prescaler
+	CCP = 0xD8;
+	CLKPSR = 0;
+
 	init_timer0();
 
 	sei();
 
-	uart_tx('P');
-
+	UART_LOGIC_HIGH();
 	adt7410_set_extended_precision();
+	uart_tx('P');
+	uart_tx('\n');
+	uart_tx('\r');
 
 	while(1) {
 		temp = adt7410_get_temp();

@@ -6,7 +6,7 @@ AVRDUDE_OPTS = -c ${PROGRAMMER_ID} -P ${PORT} -p ${PARTNO}
 
 PARTNO := t10
 MMCU := attiny10
-CLOCK := 1000000UL
+CLOCK := 8000000UL
 
 CC := avr-gcc
 CFLAGS += -Wall -Werror -Wstrict-prototypes
