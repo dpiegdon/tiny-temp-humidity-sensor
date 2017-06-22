@@ -84,6 +84,15 @@ static void uart_tx(char c)
 	stop_timer0();
 }
 
+static char hexdigit(uint8_t lower_nibble)
+{
+	if(lower_nibble <= 9)
+		lower_nibble += '0';
+	else
+		lower_nibble = lower_nibble - 10 + 'A';
+	return lower_nibble;
+}
+
 #define PIN_I2C_SCL		PB1
 #define PIN_I2C_SDA		PB2
 
@@ -187,46 +196,30 @@ static void i2c_stop(void)
 	stop_timer0();
 }
 
+#define SI7_ADDRESS 0b1000000
 #define ADT_ADDRESS 0b1001000
 
-/*
-static void adt7410_write_config(uint8_t val)
-{
-	// select config register
-	i2c_start();
-	i2c_write_byte((ADT_ADDRESS << 1) | 0);
-	if(i2c_sda_last_bit)
-		goto end;
-	i2c_write_byte(0x03);
-	if(i2c_sda_last_bit)
-		goto end;
-
-	// set 16bit precision flag
-	i2c_write_byte(val);
-end:
-	i2c_stop();
-}
-*/
-
-static uint16_t adt7410_get_temp(void)
+static void i2c_command8_resp16(uint8_t address, uint8_t command)
 {
 	uint16_t ret = 0;
 
-	// select register 0x00
+	address <<= 1;
+
+	// select command
 	i2c_start();
-	i2c_write_byte((ADT_ADDRESS << 1) | 0);
+	i2c_write_byte(address | 0);
 	if(i2c_sda_last_bit)
-		goto end;
-	i2c_write_byte(0x00);
+		goto fail;
+	i2c_write_byte(command);
 	if(i2c_sda_last_bit)
-		goto end;
+		goto fail;
 	i2c_stop();
 
 	// read it
 	i2c_start();
-	i2c_write_byte((ADT_ADDRESS << 1) | 1);
+	i2c_write_byte(address | 1);
 	if(i2c_sda_last_bit)
-		goto end;
+		goto fail;
 	ret = i2c_read_byte(1) << 8;
 
 	// read the one after it as well
@@ -234,24 +227,26 @@ static uint16_t adt7410_get_temp(void)
 
 	// last transfer was successful, even though ACK bit was not low
 	i2c_sda_last_bit = 0;
-end:
 	i2c_stop();
-	return ret;
-}
 
-char hexdigit(uint8_t lower_nibble)
-{
-	if(lower_nibble <= 9)
-		lower_nibble += '0';
-	else
-		lower_nibble = lower_nibble - 10 + 'A';
-	return lower_nibble;
+	for(uint8_t i = 0; i < 4; ++i) {
+		uart_tx(hexdigit(ret & 0xf));
+		ret >>= 4;
+	}
+
+newline:
+	uart_tx('\n');
+	uart_tx('\r');
+	return;
+
+fail:
+	i2c_stop();
+	uart_tx('?');
+	goto newline;
 }
 
 int main(void)
 {
-	uint16_t temp;
-
 	// setup UART and I2C pins
 	UART_LOGIC_HIGH();
 	DDRB = (1 << PIN_UART_TX);
@@ -266,27 +261,12 @@ int main(void)
 
 	sei();
 
-	temp = adt7410_get_temp();
-
-	// send out value via uart (or error message)
 	uart_tx('T');
-	if(!i2c_sda_last_bit) {
-		// send three digits of twos complement
-		// i.e. if positive, then 0x012 / 8. = temp in C
-		uint8_t v0,v1,v2,xor;
-		v0 = (temp >> 12) & 0xf;
-		v1 = (temp >>  8) & 0xf;
-		v2 = (temp >>  4) & 0xf;
-		xor = v0 ^ v1 ^ v2;
-		uart_tx(hexdigit(v0));
-		uart_tx(hexdigit(v1));
-		uart_tx(hexdigit(v2));
-		uart_tx(hexdigit(xor));
-	} else {
-		uart_tx('?');
-	}
-	uart_tx('\n');
-	uart_tx('\r');
+	i2c_command8_resp16(ADT_ADDRESS, 0x00);
+	uart_tx('H');
+	i2c_command8_resp16(SI7_ADDRESS, 0xe5);
+	uart_tx('t');
+	i2c_command8_resp16(SI7_ADDRESS, 0xe0);
 
 	// power down until watchdog wakes us up again
 	SMCR = 0b010;
