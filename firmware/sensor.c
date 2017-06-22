@@ -263,7 +263,7 @@ int main(void)
 
 	uart_tx('T');
 	i2c_command8_resp16(ADT_ADDRESS, 0x00);
-	uart_tx('H');
+	uart_tx('h');
 	i2c_command8_resp16(SI7_ADDRESS, 0xe5);
 	uart_tx('t');
 	i2c_command8_resp16(SI7_ADDRESS, 0xe0);
