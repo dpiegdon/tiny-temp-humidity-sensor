@@ -253,6 +253,7 @@ int main(void)
 	uint16_t temp;
 
 	// setup UART and I2C pins
+	UART_LOGIC_HIGH();
 	DDRB = (1 << PIN_UART_TX);
 	PUEB = (1 << PIN_I2C_SCL) | (1 << PIN_I2C_SDA);
 
@@ -265,13 +266,13 @@ int main(void)
 
 	sei();
 
-	UART_LOGIC_HIGH();
-
 	temp = adt7410_get_temp();
 
 	// send out value via uart (or error message)
 	uart_tx('T');
 	if(!i2c_sda_last_bit) {
+		// send three digits of twos complement
+		// i.e. if positive, then 0x012 / 8. = temp in C
 		uint8_t v0,v1,v2,xor;
 		v0 = (temp >> 12) & 0xf;
 		v1 = (temp >>  8) & 0xf;
@@ -281,6 +282,8 @@ int main(void)
 		uart_tx(hexdigit(v1));
 		uart_tx(hexdigit(v2));
 		uart_tx(hexdigit(xor));
+	} else {
+		uart_tx('?');
 	}
 	uart_tx('\n');
 	uart_tx('\r');
@@ -288,5 +291,7 @@ int main(void)
 	// power down until watchdog wakes us up again
 	SMCR = 0b010;
 	sleep_mode();
+
+	while(1) {}; // this is never reached but saves ~20 bytes...
 }
 
