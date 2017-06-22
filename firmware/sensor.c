@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
+#include <avr/wdt.h>
 
 static inline void init_timer0(void)
 {
@@ -39,7 +40,7 @@ ISR(TIM0_COMPA_vect)
 //#define UART_LOGIC_HIGH()	PORTB &= ~(1 << PIN_UART_TX)
 //#define UART_LOGIC_LOW()	PORTB |= (1 << PIN_UART_TX)
 
-// 1200 Baud UART, with clock skew calibration.
+// 1200 Baud UART, with clock skew calibration
 // actually, up to 19200 Baud work (via 19520ULL)
 #define UART_BAUD		(1220ULL)
 #define UART_BIT_TIME		((F_CPU / 1ULL) / (UART_BAUD))
@@ -114,7 +115,7 @@ static void i2c_start(void)
 	sleep_mode();
 }
 
-uint8_t i2c_sda_last_bit = 0;
+static uint8_t i2c_sda_last_bit = 0;
 
 // requirement: SCL is low.
 // will then do a full clk cycle.
@@ -188,7 +189,8 @@ static void i2c_stop(void)
 
 #define ADT_ADDRESS 0b1001000
 
-void adt7410_set_extended_precision(void)
+/*
+static void adt7410_write_config(uint8_t val)
 {
 	// select config register
 	i2c_start();
@@ -200,12 +202,13 @@ void adt7410_set_extended_precision(void)
 		goto end;
 
 	// set 16bit precision flag
-	i2c_write_byte(0x80);
+	i2c_write_byte(val);
 end:
 	i2c_stop();
 }
+*/
 
-uint16_t adt7410_get_temp(void)
+static uint16_t adt7410_get_temp(void)
 {
 	uint16_t ret = 0;
 
@@ -253,35 +256,37 @@ int main(void)
 	DDRB = (1 << PIN_UART_TX);
 	PUEB = (1 << PIN_I2C_SCL) | (1 << PIN_I2C_SDA);
 
+	wdt_enable(0b1001);
+	init_timer0();
+
 	// set system clock to 8MHz by disabling prescaler
 	CCP = 0xD8;
 	CLKPSR = 0;
 
-	init_timer0();
-
 	sei();
 
 	UART_LOGIC_HIGH();
-	adt7410_set_extended_precision();
-	uart_tx('P');
+
+	temp = adt7410_get_temp();
+
+	// send out value via uart (or error message)
+	uart_tx('T');
+	if(!i2c_sda_last_bit) {
+		uint8_t v0,v1,v2,xor;
+		v0 = (temp >> 12) & 0xf;
+		v1 = (temp >>  8) & 0xf;
+		v2 = (temp >>  4) & 0xf;
+		xor = v0 ^ v1 ^ v2;
+		uart_tx(hexdigit(v0));
+		uart_tx(hexdigit(v1));
+		uart_tx(hexdigit(v2));
+		uart_tx(hexdigit(xor));
+	}
 	uart_tx('\n');
 	uart_tx('\r');
 
-	while(1) {
-		temp = adt7410_get_temp();
-
-		// send out value via uart (or error message)
-		if(!i2c_sda_last_bit) {
-			uart_tx('T');
-			uart_tx(hexdigit((temp >> 12) & 0xf));
-			uart_tx(hexdigit((temp >>  8) & 0xf));
-			uart_tx(hexdigit((temp >>  4) & 0xf));
-			uart_tx(hexdigit((temp >>  0) & 0xf));
-		} else {
-			uart_tx('N');
-		}
-		uart_tx('\n');
-		uart_tx('\r');
-	}
+	// power down until watchdog wakes us up again
+	SMCR = 0b010;
+	sleep_mode();
 }
 
