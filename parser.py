@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+# parser script that opens a UART line and configures it to read output
+# from the AVR software UART implementation. it will then parse
+# the temperature and humidity values and print them in Celsius and relative
+# humidity (%).
+
 import serial
 import re
 import binascii
