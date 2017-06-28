@@ -1,4 +1,3 @@
-/* */
 
 #include <stdint.h>
 #include <avr/interrupt.h>
