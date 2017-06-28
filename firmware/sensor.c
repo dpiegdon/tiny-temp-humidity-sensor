@@ -69,9 +69,11 @@ ISR(TIM0_COMPA_vect)
 // inverted UART level (for RF transmission)
 //#define UART_LOGIC_HIGH()	PORTB &= ~(1 << PIN_UART_TX)
 //#define UART_LOGIC_LOW()	PORTB |= (1 << PIN_UART_TX)
-// 1200 Baud UART, with clock skew calibrated out.
-// actually, up to 19200 Baud works fine (via 19520ULL)
-#define UART_BAUD		(1220ULL)
+// 1200 Baud UART, with CLOCK SKEW calibrated out. clock skew is oscillator-
+// and temperature dependend, so one better works with lower baudrates here
+// for univeral results.
+// (actually, up to 57600 Baud works fine for me, via 59700ULL for the same chip)
+#define UART_BAUD		(1243ULL)
 #define UART_BAUD_TIME		((F_CPU / 1ULL) / (UART_BAUD))
 /* transfer single char via software UART */
 static void uart_tx(char c)
